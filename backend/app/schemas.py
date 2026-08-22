@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from typing import Literal
+
 
 class TransactionCreate(BaseModel):
     payment_id: str = Field(min_length=3, max_length=100)
@@ -127,3 +129,20 @@ class FailureClassificationResponse(BaseModel):
     requires_human_review: bool
     model_available: bool
     explanation: str
+
+class MessagePreviewRequest(BaseModel):
+    language: Literal["english", "hinglish"] = "english"
+
+    requested_by: str = Field(
+        min_length=2,
+        max_length=100
+    )
+
+
+class MessagePreviewResponse(BaseModel):
+    allowed: bool
+    language: str
+    message: str | None = None
+    blocked_reason: str | None = None
+    used_fallback: bool
+    requires_human_approval: bool

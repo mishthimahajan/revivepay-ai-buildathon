@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, selectinload
 from .config import settings
 from .database import Base, engine, get_db
 
+from .message_generator import generate_message
+
 
 from .ml_classifier import failure_classifier
 
@@ -31,6 +33,8 @@ from .schemas import (
     CSVUploadResponse,
     FailureClassificationRequest,
     FailureClassificationResponse,
+    MessagePreviewRequest,
+    MessagePreviewResponse,
     MetricsResponse,
     TransactionCreate,
     TransactionResponse
@@ -517,4 +521,66 @@ def classify_payment_failure(
         ),
         model_available=result.model_available,
         explanation=result.explanation
+    )
+
+@app.post(
+    "/transactions/{transaction_id}/message-preview",
+    response_model=MessagePreviewResponse
+)
+def preview_recovery_message(
+    transaction_id: int,
+    payload: MessagePreviewRequest,
+    database: Session = Depends(get_db)
+):
+    transaction = load_transaction(
+        database=database,
+        transaction_id=transaction_id
+    )
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found."
+        )
+
+    result = generate_message(
+        transaction=transaction,
+        language=payload.language
+    )
+
+    if result.allowed:
+        audit_details = (
+            f"{payload.language} message preview generated "
+            f"using a deterministic safety template. "
+            f"Human approval is required before delivery."
+        )
+
+        event_type = "message_preview_generated"
+    else:
+        audit_details = (
+            f"Message preview blocked: "
+            f"{result.blocked_reason}"
+        )
+
+        event_type = "message_preview_blocked"
+
+    write_audit(
+        database=database,
+        transaction=transaction,
+        event_type=event_type,
+        actor=payload.requested_by,
+        details=audit_details
+    )
+
+    database.commit()
+
+    return MessagePreviewResponse(
+        allowed=result.allowed,
+        language=result.language,
+        message=result.message,
+        blocked_reason=result.blocked_reason,
+        used_fallback=result.used_fallback,
+        requires_human_approval=(
+            result.requires_human_approval
+        )
     )
