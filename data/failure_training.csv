@@ -1,0 +1,37 @@
+description,failure_code
+customer account does not have enough balance,insufficient_funds
+payment declined because available balance is low,insufficient_funds
+bank reported insufficient account balance,insufficient_funds
+customer needs to add funds before retrying,insufficient_funds
+transaction failed due to inadequate funds,insufficient_funds
+debit was rejected because balance was insufficient,insufficient_funds
+issuing bank service is currently unavailable,bank_down
+customer bank servers are temporarily offline,bank_down
+banking partner could not process the request,bank_down
+issuer service is down for maintenance,bank_down
+bank network is temporarily unreachable,bank_down
+transaction failed because issuer was unavailable,bank_down
+payment gateway did not respond in time,gateway_timeout
+provider request exceeded the timeout limit,gateway_timeout
+payment processing request timed out,gateway_timeout
+gateway connection timed out before completion,gateway_timeout
+no response received from payment provider,gateway_timeout
+provider API timed out during payment,gateway_timeout
+customer card has passed its expiry date,card_expired
+payment card is expired and cannot be used,card_expired
+issuer rejected the expired card,card_expired
+customer needs to use a new valid card,card_expired
+card validity period has ended,card_expired
+expired card caused the transaction to fail,card_expired
+customer did not complete OTP verification,authentication_failed
+payment authentication could not be completed,authentication_failed
+incorrect OTP caused authentication failure,authentication_failed
+customer abandoned the authentication step,authentication_failed
+three dimensional secure authentication failed,authentication_failed
+verification challenge was not completed,authentication_failed
+transaction has unusual fraud indicators,fraud_suspected
+payment pattern appears suspicious,fraud_suspected
+high risk transaction requires investigation,fraud_suspected
+multiple suspicious attempts detected,fraud_suspected
+risk engine flagged possible fraudulent activity,fraud_suspected
+transaction behaviour differs from customer history,fraud_suspected

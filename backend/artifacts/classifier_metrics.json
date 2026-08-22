@@ -1,0 +1,58 @@
+{
+  "dataset_type": "synthetic_prototype",
+  "total_examples": 36,
+  "training_examples": 27,
+  "testing_examples": 9,
+  "accuracy": 0.6667,
+  "classification_report": {
+    "authentication_failed": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1-score": 0.6666666666666666,
+      "support": 1.0
+    },
+    "bank_down": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 1.0
+    },
+    "card_expired": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 2.0
+    },
+    "fraud_suspected": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 2.0
+    },
+    "gateway_timeout": {
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1-score": 0.8,
+      "support": 2.0
+    },
+    "insufficient_funds": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1-score": 0.6666666666666666,
+      "support": 1.0
+    },
+    "accuracy": 0.6666666666666666,
+    "macro avg": {
+      "precision": 0.4444444444444444,
+      "recall": 0.6666666666666666,
+      "f1-score": 0.5222222222222223,
+      "support": 9.0
+    },
+    "weighted avg": {
+      "precision": 0.48148148148148145,
+      "recall": 0.6666666666666666,
+      "f1-score": 0.5481481481481482,
+      "support": 9.0
+    }
+  }
+}
