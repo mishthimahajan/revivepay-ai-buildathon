@@ -826,7 +826,7 @@ async def razorpay_webhook(
         db.add(
             AuditLog(
                 transaction_id=transaction.id,
-                action="webhook_currency_mismatch",
+                action="webhook_amount_mismatch",
                 actor="razorpay_webhook",
                 details=(
                     f"Payment {paid_event.payment_id} was not accepted "
@@ -860,16 +860,19 @@ async def razorpay_webhook(
         )
 
         db.add(
-            AuditLog(
-                transaction_id=transaction.id,
-                action="webhook_amount_mismatch",
-                actor="razorpay_webhook",
-                details=(
-                    f"Payment {paid_event.payment_id} was rejected "
-                    "because its amount did not match."
-                ),
-            )
-        )
+    AuditLog(
+        transaction_id=transaction.id,
+        event_type="payment_captured",
+        actor="razorpay_webhook",
+        details=(
+            f"Verified captured Razorpay payment "
+            f"{paid_event.payment_id}. "
+            f"Recovered amount: "
+            f"{paid_event.amount_subunits / 100:.2f} "
+            f"{paid_event.currency}."
+        ),
+    )
+)
 
         db.commit()
 
