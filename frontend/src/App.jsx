@@ -15,6 +15,7 @@ import {
   Upload,
 } from "lucide-react";
 import AIWorkbench from "./components/AIWorkbench";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
 
 import apiClient from "./api/client";
 import "./App.css";
@@ -417,6 +418,12 @@ function App() {
 >
   AI Workbench
 </button>
+<button
+  className="nav-item"
+  onClick={() => scrollToSection("analytics")}
+>
+  Analytics
+</button>
 
           <button
             className="nav-item"
@@ -535,6 +542,7 @@ function App() {
           })}
         </section>
         <AIWorkbench />
+        <AnalyticsDashboard transactions={transactions} />
 
         <section className="table-card" id="transactions">
           <div className="section-heading">
@@ -729,6 +737,7 @@ function App() {
                                   ? "Approving..."
                                   : "Review & approve"}
                               </button>
+                              
 
                             )}
                           </div>
