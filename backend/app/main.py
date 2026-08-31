@@ -1,32 +1,37 @@
+import json
+
 from fastapi import (
     Depends,
     FastAPI,
     File,
+    Header,
     HTTPException,
+    Request,
     UploadFile,
-    status
+    status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from .csv_importer import parse_csv_transactions
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+
 from .config import settings
+from .csv_importer import parse_csv_transactions
 from .database import Base, engine, get_db
-
 from .message_generator import generate_message
-
-
 from .ml_classifier import failure_classifier
-
-from .recovery_engine import recommend_recovery_action
-
 from .models import (
     AuditLog,
     IdempotencyRecord,
-    Transaction
+    Transaction,
+    WebhookEvent,
+)
+from .webhook_service import (
+    extract_paid_webhook,
+    verify_webhook_signature,
 )
 from .payment_provider import payment_provider
+from .recovery_engine import recommend_recovery_action
 from .schemas import (
     ActionExecutionResponse,
     ApprovalRequest,
@@ -37,7 +42,8 @@ from .schemas import (
     MessagePreviewResponse,
     MetricsResponse,
     TransactionCreate,
-    TransactionResponse
+    TransactionResponse,
+    WebhookResponse,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -46,18 +52,33 @@ app = FastAPI(
     title="RevivePay AI API",
     description=(
         "Explainable payment-failure analysis and bounded "
-        "recovery workflow."
+        "recovery workflow using ML classification, human "
+        "approval, idempotency and Razorpay test mode."
     ),
-    version="1.0.0"
+    version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],
+    allow_headers=["*"],
 )
+
+
+
+
 
 
 def write_audit(
@@ -67,14 +88,16 @@ def write_audit(
     actor: str,
     details: str
 ) -> None:
-    database.add(
-        AuditLog(
-            transaction=transaction,
-            event_type=event_type,
-            actor=actor,
-            details=details
-        )
+    audit = AuditLog(
+        transaction=transaction,
+        event_type=event_type,
+        actor=actor,
+        details=details
     )
+
+    database.add(audit)
+
+
 def load_transaction(
     database: Session,
     transaction_id: int
@@ -85,11 +108,13 @@ def load_transaction(
         .where(Transaction.id == transaction_id)
     )
 
+
 @app.get("/")
 def root():
     return {
         "application": "RevivePay AI",
-        "message": "Payment recovery API is running"
+        "message": "Payment recovery API is running",
+        "version": "2.0.0"
     }
 
 
@@ -97,7 +122,10 @@ def root():
 def health():
     return {
         "status": "healthy",
-        "provider_mode": settings.provider_mode
+        "provider_mode": settings.provider_mode,
+        "ml_model_available": (
+            failure_classifier.pipeline is not None
+        )
     }
 
 
@@ -130,29 +158,42 @@ def create_transaction(
 
     try:
         database.flush()
-    except IntegrityError:
+
+    except IntegrityError as error:
         database.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A transaction with this payment_id already exists."
-        )
+            detail=(
+                "A transaction with this payment_id "
+                "already exists."
+            )
+        ) from error
 
     write_audit(
         database=database,
         transaction=transaction,
         event_type="transaction_diagnosed",
         actor="recovery-engine",
-        details=f"{decision.action}: {decision.reason}"
+        details=(
+            f"{decision.action}: {decision.reason}"
+        )
     )
 
     database.commit()
 
-    return database.scalar(
-        select(Transaction)
-        .options(selectinload(Transaction.audits))
-        .where(Transaction.id == transaction.id)
+    created_transaction = load_transaction(
+        database=database,
+        transaction_id=transaction.id
     )
+
+    if created_transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Transaction could not be loaded after creation."
+        )
+
+    return created_transaction
 
 
 @app.get(
@@ -170,28 +211,6 @@ def list_transactions(
 
     return list(database.scalars(query).all())
 
-
-@app.get(
-    "/transactions/{transaction_id}",
-    response_model=TransactionResponse
-)
-def get_transaction(
-    transaction_id: int,
-    database: Session = Depends(get_db)
-):
-    transaction = database.scalar(
-        select(Transaction)
-        .options(selectinload(Transaction.audits))
-        .where(Transaction.id == transaction_id)
-    )
-
-    if transaction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Transaction not found."
-        )
-
-    return transaction
 
 @app.post(
     "/transactions/upload-csv",
@@ -236,6 +255,7 @@ async def upload_transactions_csv(
                 database=database
             )
         )
+
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -251,63 +271,115 @@ async def upload_transactions_csv(
     )
 
 
-@app.get(
-    "/metrics",
-    response_model=MetricsResponse
+@app.post(
+    "/ai/classify-failure",
+    response_model=FailureClassificationResponse
 )
-def get_metrics(
+def classify_payment_failure(
+    payload: FailureClassificationRequest
+):
+    result = failure_classifier.classify(
+        description=payload.description
+    )
+
+    return FailureClassificationResponse(
+        predicted_failure_code=(
+            result.predicted_failure_code
+        ),
+        confidence=result.confidence,
+        requires_human_review=(
+            result.requires_human_review
+        ),
+        model_available=result.model_available,
+        explanation=result.explanation
+    )
+
+
+@app.get(
+    "/transactions/{transaction_id}",
+    response_model=TransactionResponse
+)
+def get_transaction(
+    transaction_id: int,
     database: Session = Depends(get_db)
 ):
-    transactions = list(
-        database.scalars(select(Transaction)).all()
+    transaction = load_transaction(
+        database=database,
+        transaction_id=transaction_id
     )
 
-    total_transactions = len(transactions)
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found."
+        )
 
-    recovered_transactions = sum(
-        transaction.status == "recovered"
-        for transaction in transactions
+    return transaction
+
+
+@app.post(
+    "/transactions/{transaction_id}/message-preview",
+    response_model=MessagePreviewResponse
+)
+def preview_recovery_message(
+    transaction_id: int,
+    payload: MessagePreviewRequest,
+    database: Session = Depends(get_db)
+):
+    transaction = load_transaction(
+        database=database,
+        transaction_id=transaction_id
     )
 
-    escalated_transactions = sum(
-        transaction.recommended_action == "human_review"
-        for transaction in transactions
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found."
+        )
+
+    result = generate_message(
+        transaction=transaction,
+        language=payload.language
     )
 
-    safety_stops = sum(
-        transaction.recommended_action
-        in {"stop_retries", "stop_contact"}
-        for transaction in transactions
+    if result.allowed:
+        event_type = "message_preview_generated"
+
+        audit_details = (
+            f"{payload.language} message preview generated "
+            f"using a deterministic safety template. "
+            f"Human approval is required before delivery."
+        )
+
+    else:
+        event_type = "message_preview_blocked"
+
+        audit_details = (
+            f"Message preview blocked: "
+            f"{result.blocked_reason}"
+        )
+
+    write_audit(
+        database=database,
+        transaction=transaction,
+        event_type=event_type,
+        actor=payload.requested_by,
+        details=audit_details
     )
 
-    recovered_revenue = sum(
-        transaction.recovered_amount
-        for transaction in transactions
+    database.commit()
+
+    return MessagePreviewResponse(
+        allowed=result.allowed,
+        language=result.language,
+        message=result.message,
+        blocked_reason=result.blocked_reason,
+        used_fallback=result.used_fallback,
+        requires_human_approval=(
+            result.requires_human_approval
+        )
     )
 
-    total_revenue_at_risk = sum(
-        transaction.amount
-        for transaction in transactions
-    )
-
-    recovery_rate = (
-        recovered_transactions / total_transactions * 100
-        if total_transactions
-        else 0
-    )
-
-    return MetricsResponse(
-        total_transactions=total_transactions,
-        transactions_at_risk=(
-            total_transactions - recovered_transactions
-        ),
-        total_revenue_at_risk=round(total_revenue_at_risk, 2),
-        recovered_transactions=recovered_transactions,
-        recovered_revenue=round(recovered_revenue, 2),
-        escalated_transactions=escalated_transactions,
-        safety_stops=safety_stops,
-        recovery_rate=round(recovery_rate, 2)
-    )
 
 @app.post(
     "/transactions/{transaction_id}/approve",
@@ -354,6 +426,17 @@ def approve_recovery_action(
             transaction_id=transaction.id
         )
 
+        if replayed_transaction is None:
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                ),
+                detail=(
+                    "The previous transaction result "
+                    "could not be loaded."
+                )
+            )
+
         return ActionExecutionResponse(
             message=(
                 "Duplicate request detected. The previous "
@@ -363,7 +446,19 @@ def approve_recovery_action(
             provider_reference=(
                 existing_idempotency_record.provider_reference
             ),
+            payment_url=(
+                existing_idempotency_record.provider_url
+            ),
             transaction=replayed_transaction
+        )
+
+    if transaction.recommended_action is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This transaction does not have a recovery "
+                "recommendation."
+            )
         )
 
     if transaction.recommended_action in {
@@ -387,6 +482,19 @@ def approve_recovery_action(
             detail=(
                 f"Transaction is already in terminal state: "
                 f"{transaction.status}."
+            )
+        )
+
+    if (
+        transaction.recommended_action
+        == "send_payment_link"
+        and transaction.provider_reference is not None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A Payment Link already exists for this "
+                "transaction. A second link was not created."
             )
         )
 
@@ -423,7 +531,8 @@ def approve_recovery_action(
             transaction_id=transaction.id,
             action="human_review",
             result_status="escalated",
-            provider_reference=None
+            provider_reference=None,
+            provider_url=None
         )
 
         database.add(idempotency_record)
@@ -434,6 +543,17 @@ def approve_recovery_action(
             transaction_id=transaction.id
         )
 
+        if completed_transaction is None:
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                ),
+                detail=(
+                    "Escalated transaction could not "
+                    "be loaded."
+                )
+            )
+
         return ActionExecutionResponse(
             message=(
                 "Transaction was safely escalated for "
@@ -441,19 +561,24 @@ def approve_recovery_action(
             ),
             idempotent_replay=False,
             provider_reference=None,
+            payment_url=None,
             transaction=completed_transaction
         )
 
     result = payment_provider.execute(
         payment_id=transaction.payment_id,
         action=transaction.recommended_action,
-        amount=transaction.amount
+        amount=transaction.amount,
+        currency=transaction.currency,
+        customer_name=transaction.customer_name,
+        customer_email=transaction.customer_email
     )
 
     transaction.status = result.status
     transaction.provider_reference = (
         result.provider_reference
     )
+    transaction.provider_url = result.payment_url
 
     if result.status == "execution_failed":
         transaction.approval_status = "execution_failed"
@@ -465,6 +590,7 @@ def approve_recovery_action(
             actor="payment-provider",
             details=result.message
         )
+
     else:
         transaction.attempt_count += 1
 
@@ -481,7 +607,8 @@ def approve_recovery_action(
         transaction_id=transaction.id,
         action=transaction.recommended_action,
         result_status=result.status,
-        provider_reference=result.provider_reference
+        provider_reference=result.provider_reference,
+        provider_url=result.payment_url
     )
 
     database.add(idempotency_record)
@@ -492,95 +619,340 @@ def approve_recovery_action(
         transaction_id=transaction.id
     )
 
+    if completed_transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Executed transaction could not be loaded."
+            )
+        )
+
     return ActionExecutionResponse(
         message=result.message,
         idempotent_replay=False,
         provider_reference=result.provider_reference,
+        payment_url=result.payment_url,
         transaction=completed_transaction
     )
 
 
-@app.post(
-    "/ai/classify-failure",
-    response_model=FailureClassificationResponse
+@app.get(
+    "/metrics",
+    response_model=MetricsResponse
 )
-def classify_payment_failure(
-    payload: FailureClassificationRequest
-):
-    result = failure_classifier.classify(
-        description=payload.description
-    )
-
-    return FailureClassificationResponse(
-        predicted_failure_code=(
-            result.predicted_failure_code
-        ),
-        confidence=result.confidence,
-        requires_human_review=(
-            result.requires_human_review
-        ),
-        model_available=result.model_available,
-        explanation=result.explanation
-    )
-
-@app.post(
-    "/transactions/{transaction_id}/message-preview",
-    response_model=MessagePreviewResponse
-)
-def preview_recovery_message(
-    transaction_id: int,
-    payload: MessagePreviewRequest,
+def get_metrics(
     database: Session = Depends(get_db)
 ):
-    transaction = load_transaction(
-        database=database,
-        transaction_id=transaction_id
+    transactions = list(
+        database.scalars(
+            select(Transaction)
+        ).all()
+    )
+
+    total_transactions = len(transactions)
+
+    recovered_transactions = sum(
+        transaction.status == "recovered"
+        for transaction in transactions
+    )
+
+    escalated_transactions = sum(
+        transaction.status == "escalated"
+        for transaction in transactions
+    )
+
+    safety_stops = sum(
+        transaction.recommended_action in {
+            "stop_retries",
+            "stop_contact"
+        }
+        for transaction in transactions
+    )
+
+    recovered_revenue = sum(
+        transaction.recovered_amount
+        for transaction in transactions
+    )
+
+    total_revenue_at_risk = sum(
+        transaction.amount
+        for transaction in transactions
+        if transaction.status != "recovered"
+    )
+
+    recovery_rate = (
+        recovered_transactions
+        / total_transactions
+        * 100
+        if total_transactions
+        else 0
+    )
+
+    return MetricsResponse(
+        total_transactions=total_transactions,
+        transactions_at_risk=(
+            total_transactions
+            - recovered_transactions
+        ),
+        total_revenue_at_risk=round(
+            total_revenue_at_risk,
+            2
+        ),
+        recovered_transactions=(
+            recovered_transactions
+        ),
+        recovered_revenue=round(
+            recovered_revenue,
+            2
+        ),
+        escalated_transactions=(
+            escalated_transactions
+        ),
+        safety_stops=safety_stops,
+        recovery_rate=round(
+            recovery_rate,
+            2
+        )
+    )
+
+@app.post(
+    "/webhooks/razorpay",
+    response_model=WebhookResponse,
+)
+async def razorpay_webhook(
+    request: Request,
+    x_razorpay_signature: str | None = Header(
+        default=None,
+        alias="X-Razorpay-Signature",
+    ),
+    db: Session = Depends(get_db),
+) -> WebhookResponse:
+    raw_body = await request.body()
+
+    if not settings.razorpay_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Razorpay webhook secret is not configured.",
+        )
+
+    if not x_razorpay_signature:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-Razorpay-Signature header is missing.",
+        )
+
+    signature_valid = verify_webhook_signature(
+        raw_body=raw_body,
+        received_signature=x_razorpay_signature,
+        webhook_secret=settings.razorpay_webhook_secret,
+    )
+
+    if not signature_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Razorpay webhook signature.",
+        )
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook body is not valid JSON.",
+        ) from exc
+
+    event_type = payload.get("event")
+
+    # Acknowledge events that this application does not process.
+    if event_type != "payment_link.paid":
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            message=f"Event '{event_type}' was acknowledged and ignored.",
+        )
+
+    try:
+        paid_event = extract_paid_webhook(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    existing_event = db.scalar(
+        select(WebhookEvent).where(
+            WebhookEvent.event_key == paid_event.event_key
+        )
+    )
+
+    if existing_event:
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            duplicate=True,
+            message="This webhook was already processed.",
+        )
+
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.provider_reference
+            == paid_event.payment_link_id
+        )
     )
 
     if transaction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Transaction not found."
+        db.add(
+            WebhookEvent(
+                event_key=paid_event.event_key,
+                event_type=paid_event.event_type,
+                payment_link_id=paid_event.payment_link_id,
+                payment_id=paid_event.payment_id,
+                processing_status="unmatched",
+                details="No matching transaction was found.",
+            )
+        )
+        db.commit()
+
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            message="Webhook verified, but no matching transaction was found.",
         )
 
-    result = generate_message(
-        transaction=transaction,
-        language=payload.language
+    expected_subunits = int(round(transaction.amount * 100))
+
+    if paid_event.currency != transaction.currency.upper():
+        db.add(
+            WebhookEvent(
+                event_key=paid_event.event_key,
+                event_type=paid_event.event_type,
+                payment_link_id=paid_event.payment_link_id,
+                payment_id=paid_event.payment_id,
+                processing_status="currency_mismatch",
+                details=(
+                    f"Expected {transaction.currency}; "
+                    f"received {paid_event.currency}."
+                ),
+            )
+        )
+
+        db.add(
+            AuditLog(
+                transaction_id=transaction.id,
+                action="webhook_amount_mismatch",
+                actor="razorpay_webhook",
+                details=(
+                    f"Payment {paid_event.payment_id} was not accepted "
+                    "because its currency did not match."
+                ),
+            )
+        )
+
+        db.commit()
+
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            transaction_id=transaction.id,
+            message="Webhook currency did not match the transaction.",
+        )
+
+    if paid_event.amount_subunits != expected_subunits:
+        db.add(
+            WebhookEvent(
+                event_key=paid_event.event_key,
+                event_type=paid_event.event_type,
+                payment_link_id=paid_event.payment_link_id,
+                payment_id=paid_event.payment_id,
+                processing_status="amount_mismatch",
+                details=(
+                    f"Expected {expected_subunits} subunits; "
+                    f"received {paid_event.amount_subunits}."
+                ),
+            )
+        )
+
+        db.add(
+    AuditLog(
+        transaction_id=transaction.id,
+        event_type="payment_captured",
+        actor="razorpay_webhook",
+        details=(
+            f"Verified captured Razorpay payment "
+            f"{paid_event.payment_id}. "
+            f"Recovered amount: "
+            f"{paid_event.amount_subunits / 100:.2f} "
+            f"{paid_event.currency}."
+        ),
+    )
+)
+
+        db.commit()
+
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            transaction_id=transaction.id,
+            message="Webhook amount did not match the transaction.",
+        )
+
+    if transaction.status == "recovered":
+        db.add(
+            WebhookEvent(
+                event_key=paid_event.event_key,
+                event_type=paid_event.event_type,
+                payment_link_id=paid_event.payment_link_id,
+                payment_id=paid_event.payment_id,
+                processing_status="already_recovered",
+                details="Transaction was already marked as recovered.",
+            )
+        )
+        db.commit()
+
+        return WebhookResponse(
+            accepted=True,
+            processed=False,
+            transaction_id=transaction.id,
+            message="Transaction was already recovered.",
+        )
+
+    transaction.status = "recovered"
+    transaction.recovered_amount = (
+        paid_event.amount_subunits / 100
     )
 
-    if result.allowed:
-        audit_details = (
-            f"{payload.language} message preview generated "
-            f"using a deterministic safety template. "
-            f"Human approval is required before delivery."
+    db.add(
+        WebhookEvent(
+            event_key=paid_event.event_key,
+            event_type=paid_event.event_type,
+            payment_link_id=paid_event.payment_link_id,
+            payment_id=paid_event.payment_id,
+            processing_status="processed",
+            details="Captured payment verified successfully.",
         )
-
-        event_type = "message_preview_generated"
-    else:
-        audit_details = (
-            f"Message preview blocked: "
-            f"{result.blocked_reason}"
-        )
-
-        event_type = "message_preview_blocked"
-
-    write_audit(
-        database=database,
-        transaction=transaction,
-        event_type=event_type,
-        actor=payload.requested_by,
-        details=audit_details
     )
 
-    database.commit()
-
-    return MessagePreviewResponse(
-        allowed=result.allowed,
-        language=result.language,
-        message=result.message,
-        blocked_reason=result.blocked_reason,
-        used_fallback=result.used_fallback,
-        requires_human_approval=(
-            result.requires_human_approval
+    db.add(
+        AuditLog(
+            transaction_id=transaction.id,
+            action="payment_captured",
+            actor="razorpay_webhook",
+            details=(
+                f"Verified captured Razorpay payment "
+                f"{paid_event.payment_id}. "
+                f"Recovered amount: "
+                f"{paid_event.amount_subunits / 100:.2f} "
+                f"{paid_event.currency}."
+            ),
         )
+    )
+
+    db.commit()
+    db.refresh(transaction)
+
+    return WebhookResponse(
+        accepted=True,
+        processed=True,
+        transaction_id=transaction.id,
+        message="Captured payment verified and transaction recovered.",
     )

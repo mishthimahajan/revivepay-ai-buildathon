@@ -63,6 +63,7 @@ class TransactionResponse(BaseModel):
     approval_status: str
     approved_by: str | None
     provider_reference: str | None
+    provider_url: str | None
     recovered_amount: float
 
     created_at: datetime
@@ -113,6 +114,7 @@ class ActionExecutionResponse(BaseModel):
     message: str
     idempotent_replay: bool
     provider_reference: str | None = None
+    payment_url: str | None = None
     transaction: TransactionResponse
 
 
@@ -146,3 +148,10 @@ class MessagePreviewResponse(BaseModel):
     blocked_reason: str | None = None
     used_fallback: bool
     requires_human_approval: bool
+
+class WebhookResponse(BaseModel):
+    accepted: bool
+    processed: bool = False
+    duplicate: bool = False
+    message: str
+    transaction_id: int | None = None

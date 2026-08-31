@@ -65,6 +65,10 @@ class Transaction(Base):
         String(150),
         nullable=True
     )
+    provider_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True
+    )
 
     recovered_amount: Mapped[float] = mapped_column(Float, default=0.0)
 
@@ -131,8 +135,61 @@ class IdempotencyRecord(Base):
         String(150),
         nullable=True
     )
+    provider_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
+    )
+
+class WebhookEvent(Base):
+    __tablename__ = "webhook_events"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
+
+    event_key: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    event_type: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    payment_link_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+    )
+
+    payment_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+    )
+
+    processing_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="received",
+    )
+
+    details: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
     )
