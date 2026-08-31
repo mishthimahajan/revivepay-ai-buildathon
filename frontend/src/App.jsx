@@ -8,6 +8,7 @@ import {
 import {
   AlertTriangle,
   CheckCircle2,
+  Database,
   IndianRupee,
   RefreshCw,
   Search,
@@ -58,6 +59,7 @@ function App() {
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
   const [approvingId, setApprovingId] = useState(null);
   const [previewLoading, setPreviewLoading] =
     useState(false);
@@ -106,6 +108,85 @@ function App() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  const loadDemoData = async () => {
+    try {
+      setLoadingDemo(true);
+      setError("");
+      setSuccessMessage("");
+
+      const csvResponse = await fetch(
+        "/demo_transactions.csv",
+      );
+
+      if (!csvResponse.ok) {
+        throw new Error(
+          "The demonstration CSV could not be loaded.",
+        );
+      }
+
+      const csvBlob = await csvResponse.blob();
+      const demoFile = new File(
+        [csvBlob],
+        "demo_transactions.csv",
+        { type: "text/csv" },
+      );
+
+      const formData = new FormData();
+      formData.append("file", demoFile);
+
+      const response = await apiClient.post(
+  "/transactions/upload-csv",
+  formData,
+  {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  },
+);
+
+      const result = response.data;
+
+      setSuccessMessage(
+        result.imported_rows > 0
+          ? `${result.imported_rows} demonstration transactions loaded successfully.`
+          : "Demo data is already loaded. The dashboard has been refreshed.",
+      );
+
+      await loadDashboard();
+    } catch (demoError) {
+  console.error(
+    "Demo data loading error:",
+    demoError.response?.data || demoError,
+  );
+
+  const responseDetail =
+    demoError.response?.data?.detail;
+
+  let errorMessage =
+    "The demonstration data could not be loaded.";
+
+  if (typeof responseDetail === "string") {
+    errorMessage = responseDetail;
+  } else if (Array.isArray(responseDetail)) {
+    errorMessage = responseDetail
+      .map((item) => {
+        const location = Array.isArray(item.loc)
+          ? item.loc.join(" → ")
+          : "request";
+
+        return `${location}: ${item.msg}`;
+      })
+      .join(", ");
+  } else if (demoError.message) {
+    errorMessage = demoError.message;
+  }
+
+  setError(errorMessage);
+} finally {
+  setLoadingDemo(false);
+}
+  };
 
   const uploadCSV = async (event) => {
     const file = event.target.files?.[0];
@@ -413,17 +494,18 @@ function App() {
             Dashboard
           </button>
           <button
-  className="nav-item"
-  onClick={() => scrollToSection("ai-workbench")}
->
-  AI Workbench
-</button>
-<button
-  className="nav-item"
-  onClick={() => scrollToSection("analytics")}
->
-  Analytics
-</button>
+            className="nav-item"
+            onClick={() => scrollToSection("ai-workbench")}
+          >
+            AI Workbench
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() => scrollToSection("analytics")}
+          >
+            Analytics
+          </button>
 
           <button
             className="nav-item"
@@ -466,6 +548,21 @@ function App() {
           </div>
 
           <div className="header-actions">
+            <button
+              className="demo-button"
+              onClick={loadDemoData}
+              disabled={loadingDemo || uploading}
+            >
+              <Database
+                size={17}
+                className={loadingDemo ? "spinning" : ""}
+              />
+
+              {loadingDemo
+                ? "Loading demo..."
+                : "Load Demo Data"}
+            </button>
+
             <button
               className="secondary-button"
               onClick={loadDashboard}
@@ -541,7 +638,9 @@ function App() {
             );
           })}
         </section>
+
         <AIWorkbench />
+
         <AnalyticsDashboard transactions={transactions} />
 
         <section className="table-card" id="transactions">
@@ -737,7 +836,6 @@ function App() {
                                   ? "Approving..."
                                   : "Review & approve"}
                               </button>
-                              
 
                             )}
                           </div>
