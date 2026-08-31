@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Upload,
 } from "lucide-react";
+import AIWorkbench from "./components/AIWorkbench";
 
 import apiClient from "./api/client";
 import "./App.css";
@@ -410,6 +411,12 @@ function App() {
           >
             Dashboard
           </button>
+          <button
+  className="nav-item"
+  onClick={() => scrollToSection("ai-workbench")}
+>
+  AI Workbench
+</button>
 
           <button
             className="nav-item"
@@ -527,6 +534,7 @@ function App() {
             );
           })}
         </section>
+        <AIWorkbench />
 
         <section className="table-card" id="transactions">
           <div className="section-heading">
@@ -721,6 +729,7 @@ function App() {
                                   ? "Approving..."
                                   : "Review & approve"}
                               </button>
+
                             )}
                           </div>
                         </td>
