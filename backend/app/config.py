@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./revivepay.db"
 
     provider_mode: str = "mock"
-
     frontend_origin: str = "http://localhost:5173"
 
     razorpay_key_id: str = ""
