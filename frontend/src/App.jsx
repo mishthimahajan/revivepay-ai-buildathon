@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import AIWorkbench from "./components/AIWorkbench";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
-
+import toast, { Toaster } from "react-hot-toast";
 import apiClient from "./api/client";
 import "./App.css";
 
@@ -108,12 +108,34 @@ function App() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+  useEffect(() => {
+  if (!error) {
+    return;
+  }
+
+  toast.error(error, {
+    id: "application-error",
+  });
+}, [error]);
+
+useEffect(() => {
+  if (!successMessage) {
+    return;
+  }
+
+  toast.success(successMessage, {
+    id: "application-success",
+  });
+}, [successMessage]);
 
   const loadDemoData = async () => {
     try {
       setLoadingDemo(true);
       setError("");
       setSuccessMessage("");
+      const toastId = toast.loading(
+  "Loading demonstration transactions...",
+);
 
       const csvResponse = await fetch(
         "/demo_transactions.csv",
@@ -146,6 +168,7 @@ function App() {
 );
 
       const result = response.data;
+      toast.dismiss(toastId);
 
       setSuccessMessage(
         result.imported_rows > 0
@@ -155,6 +178,7 @@ function App() {
 
       await loadDashboard();
     } catch (demoError) {
+      toast.dismiss(toastId);
   console.error(
     "Demo data loading error:",
     demoError.response?.data || demoError,
@@ -475,6 +499,37 @@ function App() {
   ];
 
   return (
+     <>
+    <Toaster
+      position="top-right"
+      toastOptions={{
+        duration: 4500,
+        style: {
+          maxWidth: "420px",
+          padding: "14px 16px",
+          border: "1px solid #e2e8f0",
+          borderRadius: "13px",
+          background: "#ffffff",
+          color: "#172033",
+          boxShadow:
+            "0 15px 35px rgba(15, 23, 42, 0.15)",
+          fontSize: "14px",
+          fontWeight: 600,
+        },
+        success: {
+          iconTheme: {
+            primary: "#059669",
+            secondary: "#ffffff",
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: "#dc2626",
+            secondary: "#ffffff",
+          },
+        },
+      }}
+    />
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -598,19 +653,9 @@ function App() {
           </div>
         </header>
 
-        {error && (
-          <div className="error-banner">
-            <AlertTriangle size={20} />
-            <span>{error}</span>
-          </div>
-        )}
+        
 
-        {successMessage && (
-          <div className="success-banner">
-            <CheckCircle2 size={20} />
-            <span>{successMessage}</span>
-          </div>
-        )}
+        
 
         <section className="metrics-grid">
           {metricCards.map((card) => {
@@ -1187,6 +1232,7 @@ function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
