@@ -11,7 +11,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import delete,func,select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -204,6 +204,50 @@ def list_transactions(
     )
 
     return list(database.scalars(query).all())
+
+@app.delete("/transactions")
+def delete_all_transactions(
+    database: Session = Depends(get_db),
+):
+    if settings.provider_mode != "mock":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Transaction deletion is available only "
+                "in mock/demo mode."
+            ),
+        )
+
+    transaction_count = database.scalar(
+        select(func.count(Transaction.id))
+    ) or 0
+
+    try:
+        # Delete dependent records before transactions.
+        database.execute(delete(AuditLog))
+        database.execute(delete(IdempotencyRecord))
+        database.execute(delete(WebhookEvent))
+        database.execute(delete(Transaction))
+
+        database.commit()
+
+    except Exception as error:
+        database.rollback()
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail="Existing transaction data could not be deleted.",
+        ) from error
+
+    return {
+        "deleted_transactions": transaction_count,
+        "message": (
+            f"{transaction_count} existing transactions "
+            "were removed."
+        ),
+    }
 
 
 @app.post(

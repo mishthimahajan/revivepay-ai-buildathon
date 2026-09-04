@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   Upload,
 } from "lucide-react";
 import AIWorkbench from "./components/AIWorkbench";
@@ -63,6 +64,8 @@ function App() {
   const [approvingId, setApprovingId] = useState(null);
   const [previewLoading, setPreviewLoading] =
     useState(false);
+  const [clearingData, setClearingData] =
+    useState(false);
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] =
@@ -81,6 +84,7 @@ function App() {
 
       setMetrics(metricsResponse.data);
       setTransactions(transactionsResponse.data);
+      setError("");
 
       setSelectedTransaction((currentTransaction) => {
         if (!currentTransaction) {
@@ -97,8 +101,16 @@ function App() {
     } catch (requestError) {
       console.error(requestError);
 
+      const detail = requestError.response?.data?.detail;
+
       setError(
-        "Could not connect to the backend. Confirm that FastAPI is running on port 8000.",
+        requestError.userMessage ||
+          (typeof detail === "string"
+            ? `Dashboard request failed: ${detail}`
+            : null) ||
+          `Dashboard request failed with status ${
+            requestError.response?.status || "unknown"
+          }.`,
       );
     } finally {
       setLoading(false);
@@ -129,13 +141,15 @@ useEffect(() => {
 }, [successMessage]);
 
   const loadDemoData = async () => {
+    let toastId;
+
     try {
       setLoadingDemo(true);
       setError("");
       setSuccessMessage("");
-      const toastId = toast.loading(
-  "Loading demonstration transactions...",
-);
+      toastId = toast.loading(
+        "Loading demonstration transactions...",
+      );
 
       const csvResponse = await fetch(
         "/demo_transactions.csv",
@@ -178,7 +192,9 @@ useEffect(() => {
 
       await loadDashboard();
     } catch (demoError) {
-      toast.dismiss(toastId);
+      if (toastId) {
+        toast.dismiss(toastId);
+      }
   console.error(
     "Demo data loading error:",
     demoError.response?.data || demoError,
@@ -211,6 +227,55 @@ useEffect(() => {
   setLoadingDemo(false);
 }
   };
+
+  const clearTransactionData = async () => {
+  const confirmed = window.confirm(
+    "Remove all existing transactions, audit history, " +
+      "approvals and test webhook records?",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setClearingData(true);
+    setError("");
+    setSuccessMessage("");
+
+    const response = await apiClient.delete(
+      "/transactions",
+    );
+
+    setTransactions([]);
+    setMetrics(null);
+    setSelectedTransaction(null);
+    setMessagePreview(null);
+
+    setSuccessMessage(
+      response.data.message ||
+        "Existing transaction data was removed.",
+    );
+
+    await loadDashboard();
+  } catch (clearError) {
+    console.error(
+      "Clear transaction data error:",
+      clearError.response?.data || clearError,
+    );
+
+    const detail =
+      clearError.response?.data?.detail;
+
+    setError(
+      typeof detail === "string"
+        ? detail
+        : "Existing transaction data could not be removed.",
+    );
+  } finally {
+    setClearingData(false);
+  }
+};
 
   const uploadCSV = async (event) => {
     const file = event.target.files?.[0];
@@ -603,6 +668,19 @@ useEffect(() => {
           </div>
 
           <div className="header-actions">
+            <button
+  className="clear-data-button"
+  onClick={clearTransactionData}
+  disabled={
+    clearingData || uploading || loadingDemo
+  }
+>
+  <Trash2 size={17} />
+
+  {clearingData
+    ? "Removing..."
+    : "Clear Data"}
+</button>
             <button
               className="demo-button"
               onClick={loadDemoData}

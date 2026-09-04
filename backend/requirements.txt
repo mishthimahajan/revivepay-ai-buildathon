@@ -9,4 +9,4 @@ email-validator==2.2.0
 python-multipart==0.0.20
 scikit-learn==1.6.1
 joblib==1.4.2
-psycopg2-binary
+psycopg[binary]>=3.2,<4

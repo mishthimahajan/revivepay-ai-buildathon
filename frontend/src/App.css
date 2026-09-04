@@ -1341,3 +1341,34 @@ html {
     flex-direction: column;
   }
 }
+
+.clear-data-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 11px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 11px;
+  background: #fff7f7;
+  color: #b42318;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.clear-data-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #fef2f2;
+  box-shadow: 0 7px 18px rgba(220, 38, 38, 0.12);
+}
+
+.clear-data-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
