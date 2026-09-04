@@ -1,0 +1,13 @@
+payment_id,customer_name,customer_email,amount,currency,failure_code,failure_description,risk_score,customer_consent,do_not_contact,attempt_count,maximum_attempts
+pay_csv_001,Aarav,aarav@example.com,1499,INR,insufficient_funds,Balance was insufficient,0.12,true,false,0,2
+pay_csv_002,Diya,diya@example.com,2399,INR,bank_down,Customer bank was unavailable,0.08,true,false,0,2
+pay_csv_003,Kabir,kabir@example.com,799,INR,authentication_failed,OTP authentication failed,0.15,true,false,0,2
+pay_csv_004,Meera,meera@example.com,4599,INR,card_expired,Customer card has expired,0.20,true,false,0,2
+pay_csv_005,Vihaan,vihaan@example.com,1199,INR,fraud_suspected,Unusual transaction pattern,0.92,true,false,0,2
+pay_csv_006,Ananya,ananya@example.com,3499,INR,gateway_timeout,Payment gateway timed out,0.11,true,false,0,2
+pay_csv_007,Ishaan,ishaan@example.com,999,INR,otp_failed,Customer did not complete OTP,0.17,true,false,1,2
+pay_csv_008,Saanvi,saanvi@example.com,1899,INR,bank_down,Bank service was unavailable,0.10,true,false,0,2
+pay_csv_009,Arjun,arjun@example.com,699,INR,unknown_error,Unmapped payment provider error,0.30,true,false,0,2
+pay_csv_010,Aadhya,aadhya@example.com,5299,INR,insufficient_funds,Balance was insufficient,0.18,true,false,2,2
+pay_csv_011,Riya,riya@example.com,1299,INR,card_expired,Card has expired,0.11,false,false,0,2
+pay_csv_012,Rohan,rohan@example.com,2499,INR,bank_down,Bank was temporarily offline,0.13,true,true,0,2

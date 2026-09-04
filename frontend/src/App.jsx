@@ -8,13 +8,17 @@ import {
 import {
   AlertTriangle,
   CheckCircle2,
+  Database,
   IndianRupee,
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   Upload,
 } from "lucide-react";
-
+import AIWorkbench from "./components/AIWorkbench";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
+import toast, { Toaster } from "react-hot-toast";
 import apiClient from "./api/client";
 import "./App.css";
 
@@ -56,8 +60,11 @@ function App() {
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
   const [approvingId, setApprovingId] = useState(null);
   const [previewLoading, setPreviewLoading] =
+    useState(false);
+  const [clearingData, setClearingData] =
     useState(false);
 
   const [error, setError] = useState("");
@@ -77,6 +84,7 @@ function App() {
 
       setMetrics(metricsResponse.data);
       setTransactions(transactionsResponse.data);
+      setError("");
 
       setSelectedTransaction((currentTransaction) => {
         if (!currentTransaction) {
@@ -93,8 +101,16 @@ function App() {
     } catch (requestError) {
       console.error(requestError);
 
+      const detail = requestError.response?.data?.detail;
+
       setError(
-        "Could not connect to the backend. Confirm that FastAPI is running on port 8000.",
+        requestError.userMessage ||
+          (typeof detail === "string"
+            ? `Dashboard request failed: ${detail}`
+            : null) ||
+          `Dashboard request failed with status ${
+            requestError.response?.status || "unknown"
+          }.`,
       );
     } finally {
       setLoading(false);
@@ -104,6 +120,162 @@ function App() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+  useEffect(() => {
+  if (!error) {
+    return;
+  }
+
+  toast.error(error, {
+    id: "application-error",
+  });
+}, [error]);
+
+useEffect(() => {
+  if (!successMessage) {
+    return;
+  }
+
+  toast.success(successMessage, {
+    id: "application-success",
+  });
+}, [successMessage]);
+
+  const loadDemoData = async () => {
+    let toastId;
+
+    try {
+      setLoadingDemo(true);
+      setError("");
+      setSuccessMessage("");
+      toastId = toast.loading(
+        "Loading demonstration transactions...",
+      );
+
+      const csvResponse = await fetch(
+        "/demo_transactions.csv",
+      );
+
+      if (!csvResponse.ok) {
+        throw new Error(
+          "The demonstration CSV could not be loaded.",
+        );
+      }
+
+      const csvBlob = await csvResponse.blob();
+      const demoFile = new File(
+        [csvBlob],
+        "demo_transactions.csv",
+        { type: "text/csv" },
+      );
+
+      const formData = new FormData();
+      formData.append("file", demoFile);
+
+      const response = await apiClient.post(
+  "/transactions/upload-csv",
+  formData,
+  {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  },
+);
+
+      const result = response.data;
+      toast.dismiss(toastId);
+
+      setSuccessMessage(
+        result.imported_rows > 0
+          ? `${result.imported_rows} demonstration transactions loaded successfully.`
+          : "Demo data is already loaded. The dashboard has been refreshed.",
+      );
+
+      await loadDashboard();
+    } catch (demoError) {
+      if (toastId) {
+        toast.dismiss(toastId);
+      }
+  console.error(
+    "Demo data loading error:",
+    demoError.response?.data || demoError,
+  );
+
+  const responseDetail =
+    demoError.response?.data?.detail;
+
+  let errorMessage =
+    "The demonstration data could not be loaded.";
+
+  if (typeof responseDetail === "string") {
+    errorMessage = responseDetail;
+  } else if (Array.isArray(responseDetail)) {
+    errorMessage = responseDetail
+      .map((item) => {
+        const location = Array.isArray(item.loc)
+          ? item.loc.join(" → ")
+          : "request";
+
+        return `${location}: ${item.msg}`;
+      })
+      .join(", ");
+  } else if (demoError.message) {
+    errorMessage = demoError.message;
+  }
+
+  setError(errorMessage);
+} finally {
+  setLoadingDemo(false);
+}
+  };
+
+  const clearTransactionData = async () => {
+  const confirmed = window.confirm(
+    "Remove all existing transactions, audit history, " +
+      "approvals and test webhook records?",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setClearingData(true);
+    setError("");
+    setSuccessMessage("");
+
+    const response = await apiClient.delete(
+      "/transactions",
+    );
+
+    setTransactions([]);
+    setMetrics(null);
+    setSelectedTransaction(null);
+    setMessagePreview(null);
+
+    setSuccessMessage(
+      response.data.message ||
+        "Existing transaction data was removed.",
+    );
+
+    await loadDashboard();
+  } catch (clearError) {
+    console.error(
+      "Clear transaction data error:",
+      clearError.response?.data || clearError,
+    );
+
+    const detail =
+      clearError.response?.data?.detail;
+
+    setError(
+      typeof detail === "string"
+        ? detail
+        : "Existing transaction data could not be removed.",
+    );
+  } finally {
+    setClearingData(false);
+  }
+};
 
   const uploadCSV = async (event) => {
     const file = event.target.files?.[0];
@@ -392,6 +564,37 @@ function App() {
   ];
 
   return (
+     <>
+    <Toaster
+      position="top-right"
+      toastOptions={{
+        duration: 4500,
+        style: {
+          maxWidth: "420px",
+          padding: "14px 16px",
+          border: "1px solid #e2e8f0",
+          borderRadius: "13px",
+          background: "#ffffff",
+          color: "#172033",
+          boxShadow:
+            "0 15px 35px rgba(15, 23, 42, 0.15)",
+          fontSize: "14px",
+          fontWeight: 600,
+        },
+        success: {
+          iconTheme: {
+            primary: "#059669",
+            secondary: "#ffffff",
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: "#dc2626",
+            secondary: "#ffffff",
+          },
+        },
+      }}
+    />
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -409,6 +612,19 @@ function App() {
             onClick={() => scrollToSection("dashboard")}
           >
             Dashboard
+          </button>
+          <button
+            className="nav-item"
+            onClick={() => scrollToSection("ai-workbench")}
+          >
+            AI Workbench
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() => scrollToSection("analytics")}
+          >
+            Analytics
           </button>
 
           <button
@@ -453,6 +669,34 @@ function App() {
 
           <div className="header-actions">
             <button
+  className="clear-data-button"
+  onClick={clearTransactionData}
+  disabled={
+    clearingData || uploading || loadingDemo
+  }
+>
+  <Trash2 size={17} />
+
+  {clearingData
+    ? "Removing..."
+    : "Clear Data"}
+</button>
+            <button
+              className="demo-button"
+              onClick={loadDemoData}
+              disabled={loadingDemo || uploading}
+            >
+              <Database
+                size={17}
+                className={loadingDemo ? "spinning" : ""}
+              />
+
+              {loadingDemo
+                ? "Loading demo..."
+                : "Load Demo Data"}
+            </button>
+
+            <button
               className="secondary-button"
               onClick={loadDashboard}
               disabled={loading}
@@ -487,19 +731,9 @@ function App() {
           </div>
         </header>
 
-        {error && (
-          <div className="error-banner">
-            <AlertTriangle size={20} />
-            <span>{error}</span>
-          </div>
-        )}
+        
 
-        {successMessage && (
-          <div className="success-banner">
-            <CheckCircle2 size={20} />
-            <span>{successMessage}</span>
-          </div>
-        )}
+        
 
         <section className="metrics-grid">
           {metricCards.map((card) => {
@@ -527,6 +761,10 @@ function App() {
             );
           })}
         </section>
+
+        <AIWorkbench />
+
+        <AnalyticsDashboard transactions={transactions} />
 
         <section className="table-card" id="transactions">
           <div className="section-heading">
@@ -721,6 +959,7 @@ function App() {
                                   ? "Approving..."
                                   : "Review & approve"}
                               </button>
+
                             )}
                           </div>
                         </td>
@@ -1071,6 +1310,7 @@ function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
