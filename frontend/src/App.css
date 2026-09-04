@@ -1,3 +1,34 @@
+:root {
+  --app-background: #f4f7fc;
+  --surface: #ffffff;
+  --surface-secondary: #f8fafc;
+  --surface-purple: #f5f3ff;
+  --text-primary: #111827;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --primary-color: #6558f5;
+  --primary-soft: #ede9fe;
+  --shadow-color: rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --app-background: #080f1d;
+  --surface: #111a2b;
+  --surface-secondary: #172235;
+  --surface-purple: #1c1c3b;
+  --text-primary: #f8fafc;
+  --text-secondary: #b6c2d2;
+  --text-muted: #8190a5;
+  --border-color: #29364a;
+  --primary-color: #8b7cff;
+  --primary-soft: #282353;
+  --shadow-color: rgba(0, 0, 0, 0.28);
+}
+
+
 * {
   box-sizing: border-box;
 }
@@ -1552,4 +1583,168 @@ html {
   .insights-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  background: var(--surface-secondary);
+}
+
+body,
+.app-shell,
+.main-content {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .main-content {
+  background: var(--app-background);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .page-header h2,
+:root[data-theme="dark"] .section-heading h3,
+:root[data-theme="dark"] .metric-card strong,
+:root[data-theme="dark"] .chart-heading h4,
+:root[data-theme="dark"] .insights-heading h3,
+:root[data-theme="dark"] .workbench-header h3,
+:root[data-theme="dark"] .result-placeholder h4,
+:root[data-theme="dark"] .result-heading h4,
+:root[data-theme="dark"] .modal-header h3,
+:root[data-theme="dark"] .message-preview-heading h4 {
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .page-header p,
+:root[data-theme="dark"] .section-heading p,
+:root[data-theme="dark"] .metric-card p,
+:root[data-theme="dark"] .chart-heading span,
+:root[data-theme="dark"] .insights-heading p,
+:root[data-theme="dark"] .workbench-header p,
+:root[data-theme="dark"] .result-placeholder p {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .table-card,
+:root[data-theme="dark"] .audit-history-card,
+:root[data-theme="dark"] .analytics-section,
+:root[data-theme="dark"] .chart-card,
+:root[data-theme="dark"] .classification-form,
+:root[data-theme="dark"] .classification-result,
+:root[data-theme="dark"] .recovery-timeline,
+:root[data-theme="dark"] .transaction-modal {
+  border-color: var(--border-color);
+  background: var(--surface);
+  box-shadow: 0 14px 35px var(--shadow-color);
+}
+
+:root[data-theme="dark"] .ai-workbench,
+:root[data-theme="dark"] .executive-insights {
+  border-color: var(--border-color);
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(139, 124, 255, 0.17),
+      transparent 35%
+    ),
+    var(--surface);
+}
+
+:root[data-theme="dark"] .insight-card,
+:root[data-theme="dark"] .detail-grid > div,
+:root[data-theme="dark"] .result-details > div {
+  border-color: var(--border-color);
+  background: var(--surface-secondary);
+}
+
+:root[data-theme="dark"] .insight-card strong,
+:root[data-theme="dark"] .detail-grid strong,
+:root[data-theme="dark"] .result-details strong,
+:root[data-theme="dark"] .timeline-copy strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  border-color: var(--border-color);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] table {
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] th {
+  border-color: var(--border-color);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] td {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] tbody tr:hover {
+  background: rgba(139, 124, 255, 0.07);
+}
+
+:root[data-theme="dark"] .recommendation-panel,
+:root[data-theme="dark"] .explanation-card {
+  border-color: #3d3679;
+  background: var(--surface-purple);
+}
+
+:root[data-theme="dark"] .central-audit-item,
+:root[data-theme="dark"] .audit-item {
+  border-color: var(--border-color);
+}
+
+:root[data-theme="dark"] .modal-backdrop {
+  background: rgba(2, 6, 23, 0.78);
+}
+
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .theme-toggle {
+  border-color: var(--border-color);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .analytics-empty {
+  border-color: var(--border-color);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
 }

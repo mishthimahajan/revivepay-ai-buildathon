@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Database,
   IndianRupee,
+  Moon,
+  Sun,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -67,6 +69,19 @@ function App() {
     useState(false);
   const [clearingData, setClearingData] =
     useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+  const savedTheme = localStorage.getItem(
+    "revivepay-theme",
+  );
+
+  if (savedTheme) {
+    return savedTheme === "dark";
+  }
+
+  return window.matchMedia(
+    "(prefers-color-scheme: dark)",
+  ).matches;
+});
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] =
@@ -140,6 +155,21 @@ useEffect(() => {
     id: "application-success",
   });
 }, [successMessage]);
+
+useEffect(() => {
+  const theme = darkMode ? "dark" : "light";
+
+  document.documentElement.setAttribute(
+    "data-theme",
+    theme,
+  );
+
+  localStorage.setItem(
+    "revivepay-theme",
+    theme,
+  );
+}, [darkMode]);
+
 
   const loadDemoData = async () => {
     let toastId;
@@ -669,6 +699,33 @@ useEffect(() => {
           </div>
 
           <div className="header-actions">
+            <button
+  className="theme-toggle"
+  type="button"
+  onClick={() =>
+    setDarkMode((currentMode) => !currentMode)
+  }
+  aria-label={
+    darkMode
+      ? "Switch to light mode"
+      : "Switch to dark mode"
+  }
+  title={
+    darkMode
+      ? "Switch to light mode"
+      : "Switch to dark mode"
+  }
+>
+  {darkMode ? (
+    <Sun size={18} />
+  ) : (
+    <Moon size={18} />
+  )}
+
+  <span>
+    {darkMode ? "Light" : "Dark"}
+  </span>
+</button>
             <button
   className="clear-data-button"
   onClick={clearTransactionData}
