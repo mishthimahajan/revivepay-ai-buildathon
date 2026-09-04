@@ -19,6 +19,7 @@ import {
 import AIWorkbench from "./components/AIWorkbench";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import toast, { Toaster } from "react-hot-toast";
+import ExecutiveInsights from "./components/ExecutiveInsights";
 import apiClient from "./api/client";
 import "./App.css";
 
@@ -761,6 +762,9 @@ useEffect(() => {
             );
           })}
         </section>
+        <ExecutiveInsights
+  transactions={transactions}
+/>
 
         <AIWorkbench />
 
@@ -925,6 +929,12 @@ useEffect(() => {
                             >
                               View details
                             </button>
+                            <button
+  className="nav-item"
+  onClick={() => scrollToSection("insights")}
+>
+  Insights
+</button>
 
                             {safetyBlocked ? (
                               <button
@@ -959,6 +969,7 @@ useEffect(() => {
                                   ? "Approving..."
                                   : "Review & approve"}
                               </button>
+                              
 
                             )}
                           </div>
